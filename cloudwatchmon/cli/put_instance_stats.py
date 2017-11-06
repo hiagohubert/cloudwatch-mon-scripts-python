@@ -415,8 +415,7 @@ def get_disk_info(args):
 def add_memory_and_cpu_avg_metric(args, metrics):
     mem = MemData(args.mem_used_incl_cache_buff)
     cpu_percent = psutil.cpu_percent()
-
-    avg = (mem.mem_util() + cpu_percent)/2
+    avg = (mem.mem_util() + cpu_percent) / 2
 
     metrics.add_metric('CPUMemoryAVG', 'Percent', avg)
 
