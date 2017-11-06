@@ -26,6 +26,7 @@ import boto.ec2.autoscale
 import boto.ec2.cloudwatch
 import datetime
 import os
+import psutil
 import random
 import re
 import sys
@@ -274,6 +275,10 @@ https://github.com/osiegmar/cloudwatch-mon-scripts-python
                               choices=size_units,
                               help='Specifies units for memory metrics.')
 
+    parser.add_argument('--cpu-mem-avg',
+                        action='store_true',
+                        help='Reports cpu and memory avg percent.')
+
     loadavg_group = parser.add_argument_group('load average')
     loadavg_group.add_argument('--loadavg',
                                action='store_true',
@@ -407,6 +412,15 @@ def get_disk_info(args):
     return disks
 
 
+def add_memory_and_cpu_avg_metric(args, metrics):
+    mem = MemData(args.mem_used_incl_cache_buff)
+    cpu_percent = psutil.cpu_percent()
+
+    avg = (mem.mem_util() + cpu_percent)/2
+
+    metrics.add_metric('CPUMemoryAVG', 'Percent', avg)
+
+
 def add_disk_metrics(args, metrics):
     disk_unit_name = SIZE_UNITS_CFG[args.disk_space_units]['name']
     disk_unit_div = float(SIZE_UNITS_CFG[args.disk_space_units]['div'])
@@ -475,6 +489,7 @@ def get_autoscaling_group_name(region, instance_id, verbose):
 def validate_args(args):
     report_mem_data = args.mem_util or args.mem_used or args.mem_avail or \
         args.swap_util or args.swap_used
+    report_cpu_mem_avg = args.cpu_mem_avg
     report_disk_data = args.disk_path is not None
     report_loadavg_data = args.loadavg or args.loadavg_percpu
     report_process_data = args.process_name is not None
@@ -495,11 +510,11 @@ def validate_args(args):
                          'disk path is not specified.')
 
     if not report_mem_data and not report_disk_data and \
-            not args.from_file and not report_loadavg_data:
+            not args.from_file and not report_loadavg_data and not report_cpu_mem_avg:
         raise ValueError('No metrics specified for collection and '
                          'submission to CloudWatch.')
 
-    return report_disk_data, report_mem_data, report_loadavg_data, report_process_data
+    return report_disk_data, report_mem_data, report_loadavg_data, report_process_data, report_cpu_mem_avg
 
 
 def main():
@@ -517,7 +532,7 @@ def main():
         return 0
 
     try:
-        report_disk_data, report_mem_data, report_loadavg_data, report_process_data = \
+        report_disk_data, report_mem_data, report_loadavg_data, report_process_data, report_cpu_mem_avg = \
             validate_args(args)
 
         # avoid a storm of calls at the beginning of a minute
@@ -565,7 +580,10 @@ def main():
 
         if report_process_data:
             add_process_metrics(args, metrics)
-
+        
+        if report_cpu_mem_avg:
+            add_memory_and_cpu_avg_metric(args, metrics)
+    
         if args.verbose:
             print('Request:\n' + str(metrics))
 
